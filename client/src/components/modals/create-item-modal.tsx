@@ -28,7 +28,9 @@ import { TagsInput } from "@/components/ui/tags-input";
 
 // Create a schema specifically for the form
 const workItemFormSchema = z.object({
-  title: z.string().min(3, { message: "Title must be at least 3 characters" }),
+  title: z.string()
+    .min(3, { message: "Title must be at least 3 characters" })
+    .max(200, { message: "Title cannot exceed 200 characters" }),
   description: z.string().optional(),
   tags: z.string().optional(),
   type: z.string(),
@@ -447,6 +449,20 @@ export function CreateItemModal({
     } catch (error: any) {
       console.error("Error creating work item:", error);
 
+      // Check for specific database errors (title too long)
+      if (error?.message && error.message.includes("Data too long for column 'title'")) {
+        toast({
+          title: "Title Too Long",
+          description: "The title cannot exceed 200 characters. Please shorten your title and try again.",
+          variant: "destructive",
+        });
+        // Set a specific error on the title field
+        form.setError("title", { 
+          message: "Title cannot exceed 200 characters" 
+        });
+        return;
+      }
+
       // Check if it's a validation error with field-specific errors
       if (error?.response?.data?.errors) {
         const apiErrors = error.response.data.errors;
@@ -542,9 +558,20 @@ export function CreateItemModal({
                 <FormItem>
                   <FormLabel>Title <span className="text-red-500">*</span></FormLabel>
                   <FormControl>
-                    <Input {...field} placeholder="Enter title" />
+                    <Input {...field} placeholder="Enter title" maxLength={200} />
                   </FormControl>
-                  <FormMessage />
+                  <div className="flex justify-between items-center">
+                    <FormMessage />
+                    <div className={`text-xs mt-1 ${
+                      field.value?.length > 180 
+                        ? 'text-red-500' 
+                        : field.value?.length > 160 
+                          ? 'text-yellow-600' 
+                          : 'text-gray-500'
+                    }`}>
+                      {field.value?.length || 0}/200 characters
+                    </div>
+                  </div>
                 </FormItem>
               )}
             />

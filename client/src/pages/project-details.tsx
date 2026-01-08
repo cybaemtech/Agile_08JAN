@@ -334,8 +334,29 @@ export default function ProjectDetails() {
   const saveInlineEdit = async (itemId: number, field: EditableField) => {
     const value = editValues[field];
 
+    // Special validation for title - check length limit
+    if (field === 'title') {
+      if (value === undefined || value.trim() === '') {
+        toast({
+          title: "Error",
+          description: "Title cannot be empty",
+          variant: "destructive",
+        });
+        cancelInlineEdit();
+        return;
+      }
+      if (value.length > 200) {
+        toast({
+          title: "Title Too Long",
+          description: "Title cannot exceed 200 characters. Please shorten your title.",
+          variant: "destructive",
+        });
+        cancelInlineEdit();
+        return;
+      }
+    }
     // Special validation for actualHours - allow 0 and empty (null) values
-    if (field === 'actualHours') {
+    else if (field === 'actualHours') {
       if (value !== undefined && value.trim() !== '' && (isNaN(parseFloat(value)) || parseFloat(value) < 0)) {
         toast({
           title: "Error",
@@ -1095,6 +1116,11 @@ export default function ProjectDetails() {
 
   // Helper function to check if an item matches the current filters
   const itemMatchesFilters = (item: WorkItem): boolean => {
+    // Type filter
+    if (filterType.length > 0 && !filterType.includes(item.type)) {
+      return false;
+    }
+
     // Status filter
     if (filterStatus.length > 0 && !filterStatus.includes(item.status)) {
       return false;
@@ -1102,8 +1128,19 @@ export default function ProjectDetails() {
 
     // Assignee filter
     if (filterAssignee.length > 0) {
-      if (!item.assigneeId || !filterAssignee.includes(item.assigneeId)) {
-        return false;
+      // Handle special case for unassigned items (represented by -1)
+      if (filterAssignee.includes(-1)) {
+        // Show unassigned items (null or undefined assigneeId)
+        if (!item.assigneeId) {
+          return true;
+        }
+        // If filtering includes both -1 and specific user IDs, check for those too
+        return filterAssignee.some(id => id !== -1 && item.assigneeId === id);
+      } else {
+        // Normal assignee filtering - only show items assigned to specific users
+        if (!item.assigneeId || !filterAssignee.includes(item.assigneeId)) {
+          return false;
+        }
       }
     }
 
@@ -1151,8 +1188,11 @@ export default function ProjectDetails() {
         hasChildren: features.some(f => f.parentId === epic.id)
       });
 
-      // If this epic is expanded, add its features
-      if (expandedItems[epic.id]) {
+      // If this epic is expanded OR if we're filtering for child items, add its features
+      const shouldExpandEpic = expandedItems[epic.id] || 
+        (filterType.length > 0 && (filterType.includes('FEATURE') || filterType.includes('STORY') || filterType.includes('TASK') || filterType.includes('BUG')));
+      
+      if (shouldExpandEpic) {
         const epicFeatures = features.filter(f => f.parentId === epic.id);
         for (const feature of epicFeatures) {
           hierarchicalItems.push({
@@ -1161,8 +1201,11 @@ export default function ProjectDetails() {
             hasChildren: stories.some(s => s.parentId === feature.id)
           });
 
-          // If this feature is expanded, add its stories
-          if (expandedItems[feature.id]) {
+          // If this feature is expanded OR if we're filtering for child items, add its stories
+          const shouldExpandFeature = expandedItems[feature.id] || 
+            (filterType.length > 0 && (filterType.includes('STORY') || filterType.includes('TASK') || filterType.includes('BUG')));
+          
+          if (shouldExpandFeature) {
             const featureStories = stories.filter(s => s.parentId === feature.id);
             for (const story of featureStories) {
               hierarchicalItems.push({
@@ -1171,18 +1214,19 @@ export default function ProjectDetails() {
                 hasChildren: tasksAndBugs.some(tb => tb.parentId === story.id)
               });
 
-              // If this story is expanded, add its tasks and bugs
-              if (expandedItems[story.id]) {
+              // If this story is expanded OR if we're filtering for tasks/bugs, add its tasks and bugs
+              const shouldShowChildren = expandedItems[story.id] || 
+                (filterType.length > 0 && (filterType.includes('TASK') || filterType.includes('BUG')));
+              
+              if (shouldShowChildren) {
                 const storyTasksAndBugs = tasksAndBugs.filter(tb => tb.parentId === story.id);
                 for (const taskOrBug of storyTasksAndBugs) {
-                  // Only show task/bug if it matches filters or if we're showing parent
-                  if (itemMatchesFilters(taskOrBug) || shouldShowItem(story, workItems)) {
-                    hierarchicalItems.push({
-                      ...taskOrBug,
-                      level: 3,
-                      hasChildren: false
-                    });
-                  }
+                  // Always show all tasks/bugs under an expanded story that's being displayed
+                  hierarchicalItems.push({
+                    ...taskOrBug,
+                    level: 3,
+                    hasChildren: false
+                  });
                 }
               }
             }
@@ -1211,18 +1255,19 @@ export default function ProjectDetails() {
           hasChildren: tasksAndBugs.some(tb => tb.parentId === story.id)
         });
 
-        // If this story is expanded, add its tasks and bugs
-        if (expandedItems[story.id]) {
+        // If this story is expanded OR if we're filtering for tasks/bugs, add its tasks and bugs
+        const shouldShowChildren = expandedItems[story.id] || 
+          (filterType.length > 0 && (filterType.includes('TASK') || filterType.includes('BUG')));
+        
+        if (shouldShowChildren) {
           const storyTasksAndBugs = tasksAndBugs.filter(tb => tb.parentId === story.id);
           for (const taskOrBug of storyTasksAndBugs) {
-            // Only show task/bug if it matches filters or if we're showing parent
-            if (itemMatchesFilters(taskOrBug) || shouldShowItem(story, workItems)) {
-              hierarchicalItems.push({
-                ...taskOrBug,
-                level: 2,
-                hasChildren: false
-              });
-            }
+            // Always show all tasks/bugs under an expanded story that's being displayed
+            hierarchicalItems.push({
+              ...taskOrBug,
+              level: 2,
+              hasChildren: false
+            });
           }
         }
       }
@@ -1237,18 +1282,19 @@ export default function ProjectDetails() {
         hasChildren: tasksAndBugs.some(tb => tb.parentId === story.id)
       });
 
-      // If this story is expanded, add its tasks and bugs
-      if (expandedItems[story.id]) {
+      // If this story is expanded OR if we're filtering for tasks/bugs, add its tasks and bugs
+      const shouldShowChildren = expandedItems[story.id] || 
+        (filterType.length > 0 && (filterType.includes('TASK') || filterType.includes('BUG')));
+      
+      if (shouldShowChildren) {
         const storyTasksAndBugs = tasksAndBugs.filter(tb => tb.parentId === story.id);
         for (const taskOrBug of storyTasksAndBugs) {
-          // Only show task/bug if it matches filters or if we're showing parent
-          if (itemMatchesFilters(taskOrBug) || shouldShowItem(story, workItems)) {
-            hierarchicalItems.push({
-              ...taskOrBug,
-              level: 1,
-              hasChildren: false
-            });
-          }
+          // Always show all tasks/bugs under an expanded story that's being displayed
+          hierarchicalItems.push({
+            ...taskOrBug,
+            level: 1,
+            hasChildren: false
+          });
         }
       }
     }
@@ -1963,14 +2009,21 @@ export default function ProjectDetails() {
                     <div className="flex items-center">
                       <span className="text-xs font-medium mr-2">Assignee:</span>
                       <Select
-                        value={filterAssignee.length > 0 ? String(filterAssignee[0]) : "ALL"}
+                        value={
+                          filterAssignee.length === 0 
+                            ? "all" 
+                            : filterAssignee.includes(-1) 
+                              ? "unassigned"
+                              : String(filterAssignee[0])
+                        }
                         onValueChange={handleFilterAssigneeChange}
                       >
                         <SelectTrigger className="h-8 px-2 text-xs w-28">
                           <SelectValue placeholder="All assignees" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="ALL">All assignees</SelectItem>
+                          <SelectItem value="all">All assignees</SelectItem>
+                          <SelectItem value="unassigned">Unassigned</SelectItem>
                           {Array.isArray(projectTeamMembers) && projectTeamMembers.map(user => (
                             <SelectItem key={user.id} value={String(user.id)}>
                               {user.fullName || user.username}
@@ -2351,7 +2404,7 @@ export default function ProjectDetails() {
                       <h3 className="text-sm font-semibold text-gray-900">Backlog View</h3>
                       
                       {/* Active filters indicator */}
-                      {(filterStatus.length > 0 || (filterAssignee.length > 0 && currentUser && filterAssignee.includes(currentUser.id))) && (
+                      {(filterType.length > 0 || filterStatus.length > 0 || filterAssignee.length > 0) && (
                         <div className="flex items-center gap-1">
                           <div className="h-2 w-2 bg-blue-500 rounded-full"></div>
                           <span className="text-xs text-blue-600">Filters Active</span>
@@ -2380,25 +2433,50 @@ export default function ProjectDetails() {
                         </select>
                       </div>
 
-                      {/* Assignee Filter (Current User vs All) */}
+                      {/* Assignee Filter */}
                       <div className="flex items-center gap-1">
-                        <span className="text-xs text-gray-600">Show:</span>
+                        <span className="text-xs text-gray-600">Assignee:</span>
                         <select
-                          value={filterAssignee.length > 0 && currentUser && filterAssignee.includes(currentUser.id) ? 'mine' : 'all'}
+                          value={
+                            filterAssignee.length === 0 
+                              ? "all" 
+                              : filterAssignee.includes(-1) 
+                                ? "unassigned"
+                                : String(filterAssignee[0])
+                          }
                           onChange={(e) => {
                             const value = e.target.value;
-                            if (value === 'mine' && currentUser) {
-                              setFilterAssignee([currentUser.id]);
-                            } else {
-                              setFilterAssignee([]);
-                            }
+                            handleFilterAssigneeChange(value);
                           }}
                           className="text-xs border border-gray-300 rounded px-2 py-1 bg-white min-w-20"
                         >
-                          {(currentUser?.role === 'ADMIN' || currentUser?.role === 'SCRUM_MASTER') && (
-                            <option value="all">All Items</option>
-                          )}
-                          <option value="mine">My Items</option>
+                          <option value="all">All</option>
+                          <option value="unassigned">Unassigned</option>
+                          {Array.isArray(projectTeamMembers) && projectTeamMembers.map(user => (
+                            <option key={user.id} value={String(user.id)}>
+                              {user.fullName || user.username}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Type Filter */}
+                      <div className="flex items-center gap-1">
+                        <span className="text-xs text-gray-600">Type:</span>
+                        <select
+                          value={filterType.length === 1 ? filterType[0] : ''}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            setFilterType(value ? [value] : []);
+                          }}
+                          className="text-xs border border-gray-300 rounded px-2 py-1 bg-white min-w-20"
+                        >
+                          <option value="">All Types</option>
+                          <option value="EPIC">Epic</option>
+                          <option value="FEATURE">Feature</option>
+                          <option value="STORY">Story</option>
+                          <option value="TASK">Task</option>
+                          <option value="BUG">Bug</option>
                         </select>
                       </div>
                     </div>
@@ -2525,6 +2603,7 @@ export default function ProjectDetails() {
                                     <input
                                       type="text"
                                       value={editValues.title || ''}
+                                      maxLength={200}
                                       onChange={(e) => setEditValues({ ...editValues, title: e.target.value })}
                                       onBlur={() => saveInlineEdit(item.id, 'title')}
                                       onKeyDown={(e) => {
