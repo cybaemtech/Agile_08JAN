@@ -119,7 +119,7 @@ export const workItems = pgTable("work_items", {
   updatedBy: integer("updated_by").references(() => users.id, { onDelete: 'set null' }),
   updatedByName: varchar("updated_by_name", { length: 255 }),
   estimate: decimal("estimate", { precision: 10, scale: 2 }),
-  actualHours: decimal("actual_hours", { precision: 10, scale: 2 }),
+  actualHours: decimal("actual_hrs", { precision: 10, scale: 2 }),
   startDate: timestamp("start_date"),
   endDate: timestamp("end_date"),
   completedAt: timestamp("completed_at"),
