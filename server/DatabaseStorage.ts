@@ -430,10 +430,7 @@ export class DatabaseStorage {
     // If status is DONE, set completedAt
     if (status === "DONE") {
       values.completedAt = now;
-      // If it's a TASK or BUG, fill actualHours with estimate if not already set
-      if ((workItem.type === 'TASK' || workItem.type === 'BUG') && (!workItem.actualHours || Number(workItem.actualHours) === 0) && workItem.estimate) {
-        values.actualHours = Number(workItem.estimate);
-      }
+      // Note: actualHours should be manually entered, not auto-filled from estimate
     }
     
     await db

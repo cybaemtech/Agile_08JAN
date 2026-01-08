@@ -172,11 +172,22 @@ export function EditItemModal({
         (item.type === 'TASK' || item.type === 'BUG') && item.parentId === itemId
       );
       for (const child of childItems) {
-        totalHours += Number(child.actualHours) || 0;
+        // Only count actual hours that have been explicitly set (not null/undefined/0)
+        if (child.actualHours != null && child.actualHours !== '' && child.actualHours !== 0) {
+          const childHours = parseFloat(String(child.actualHours));
+          if (!isNaN(childHours) && childHours > 0) {
+            totalHours += childHours;
+          }
+        }
       }
     } else if (itemType === 'TASK' || itemType === 'BUG') {
-      // For leaf items, return their own actual hours
-      return Number(workItems.find(item => item.id === itemId)?.actualHours) || 0;
+      // For leaf items, return their own actual hours only if explicitly set
+      const item = workItems.find(item => item.id === itemId);
+      if (item?.actualHours != null && item.actualHours !== '' && item.actualHours !== 0) {
+        const hours = parseFloat(String(item.actualHours));
+        return (!isNaN(hours) && hours > 0) ? hours : 0;
+      }
+      return 0;
     }
 
     return totalHours;

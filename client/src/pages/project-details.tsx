@@ -197,8 +197,19 @@ export default function ProjectDetails() {
       } else {
         setFilterAssignee([currentUser.id]); // Filter to current user for regular users
       }
-    } else if (projectView !== 'board') {
-      // Clear all filters when leaving board view to prevent stale state
+    } else if (projectView === 'backlog' && currentUser?.id) {
+      // Auto-filter backlog view based on user role
+      if (currentUser.role === 'ADMIN' || currentUser.role === 'SCRUM_MASTER') {
+        // Admin and Scrum Master can see all items by default
+        if (filterAssignee.length === 0 && filterStatus.length === 0) {
+          // Keep existing filters or show all
+        }
+      } else {
+        // Regular users see only their assigned items by default
+        setFilterAssignee([currentUser.id]);
+      }
+    } else if (projectView !== 'board' && projectView !== 'backlog') {
+      // Clear all filters when leaving board/backlog views to prevent stale state
       setFilterAssignee([]);
       setFilterType([]);
       setFilterStatus([]);
@@ -1061,26 +1072,67 @@ export default function ProjectDetails() {
         (item.type === 'TASK' || item.type === 'BUG') && item.parentId === itemId
       );
       for (const child of childItems) {
-        const childHours = child.actualHours != null ? parseFloat(String(child.actualHours)) : 0;
-        totalHours += childHours;
+        // Only count actual hours that have been explicitly set (not null/undefined/0)
+        if (child.actualHours != null && child.actualHours !== '' && child.actualHours !== 0) {
+          const childHours = parseFloat(String(child.actualHours));
+          if (!isNaN(childHours) && childHours > 0) {
+            totalHours += childHours;
+          }
+        }
       }
     } else if (itemType === 'TASK' || itemType === 'BUG') {
-      // For leaf items, return their own actual hours
-      const actualHours = workItems.find(item => item.id === itemId)?.actualHours;
-      return actualHours != null ? parseFloat(String(actualHours)) : 0;
+      // For leaf items, return their own actual hours only if explicitly set
+      const item = workItems.find(item => item.id === itemId);
+      if (item?.actualHours != null && item.actualHours !== '' && item.actualHours !== 0) {
+        const hours = parseFloat(String(item.actualHours));
+        return (!isNaN(hours) && hours > 0) ? hours : 0;
+      }
+      return 0;
     }
 
     return totalHours;
   };
 
+  // Helper function to check if an item matches the current filters
+  const itemMatchesFilters = (item: WorkItem): boolean => {
+    // Status filter
+    if (filterStatus.length > 0 && !filterStatus.includes(item.status)) {
+      return false;
+    }
+
+    // Assignee filter
+    if (filterAssignee.length > 0) {
+      if (!item.assigneeId || !filterAssignee.includes(item.assigneeId)) {
+        return false;
+      }
+    }
+
+    return true;
+  };
+
+  // Helper function to check if item should be shown (itself or has visible children)
+  const shouldShowItem = (item: WorkItem, allItems: WorkItem[]): boolean => {
+    // If item itself matches filters, show it
+    if (itemMatchesFilters(item)) {
+      return true;
+    }
+
+    // If item is a parent and has children that match filters, show it
+    const children = allItems.filter(child => child.parentId === item.id);
+    return children.some(child => shouldShowItem(child, allItems));
+  };
+
   const organizeWorkItemsHierarchically = () => {
     if (!Array.isArray(workItems)) return [];
 
-    // Extract all items by type
-    const epics = workItems.filter(item => item.type === 'EPIC');
-    const features = workItems.filter(item => item.type === 'FEATURE');
-    const stories = workItems.filter(item => item.type === 'STORY');
-    const tasksAndBugs = workItems.filter(item => item.type === 'TASK' || item.type === 'BUG');
+    // Apply filters first - only include items that match filters or have children that match
+    const filteredItems = workItems.filter(item => shouldShowItem(item, workItems));
+
+    // Extract all filtered items by type
+    const epics = filteredItems.filter(item => item.type === 'EPIC');
+    const features = filteredItems.filter(item => item.type === 'FEATURE');
+    const stories = filteredItems.filter(item => item.type === 'STORY');
+    const tasksAndBugs = filteredItems.filter(item => item.type === 'TASK' || item.type === 'BUG');
 
     // Debug logging
     console.log('[DEBUG] Work Items Organization:');
@@ -1123,11 +1175,14 @@ export default function ProjectDetails() {
               if (expandedItems[story.id]) {
                 const storyTasksAndBugs = tasksAndBugs.filter(tb => tb.parentId === story.id);
                 for (const taskOrBug of storyTasksAndBugs) {
-                  hierarchicalItems.push({
-                    ...taskOrBug,
-                    level: 3,
-                    hasChildren: false
-                  });
+                  // Only show task/bug if it matches filters or if we're showing parent
+                  if (itemMatchesFilters(taskOrBug) || shouldShowItem(story, workItems)) {
+                    hierarchicalItems.push({
+                      ...taskOrBug,
+                      level: 3,
+                      hasChildren: false
+                    });
+                  }
                 }
               }
             }
@@ -1160,11 +1215,14 @@ export default function ProjectDetails() {
         if (expandedItems[story.id]) {
           const storyTasksAndBugs = tasksAndBugs.filter(tb => tb.parentId === story.id);
           for (const taskOrBug of storyTasksAndBugs) {
-            hierarchicalItems.push({
-              ...taskOrBug,
-              level: 2,
-              hasChildren: false
-            });
+            // Only show task/bug if it matches filters or if we're showing parent
+            if (itemMatchesFilters(taskOrBug) || shouldShowItem(story, workItems)) {
+              hierarchicalItems.push({
+                ...taskOrBug,
+                level: 2,
+                hasChildren: false
+              });
+            }
           }
         }
       }
@@ -1183,11 +1241,14 @@ export default function ProjectDetails() {
       if (expandedItems[story.id]) {
         const storyTasksAndBugs = tasksAndBugs.filter(tb => tb.parentId === story.id);
         for (const taskOrBug of storyTasksAndBugs) {
-          hierarchicalItems.push({
-            ...taskOrBug,
-            level: 1,
-            hasChildren: false
-          });
+          // Only show task/bug if it matches filters or if we're showing parent
+          if (itemMatchesFilters(taskOrBug) || shouldShowItem(story, workItems)) {
+            hierarchicalItems.push({
+              ...taskOrBug,
+              level: 1,
+              hasChildren: false
+            });
+          }
         }
       }
     }
@@ -2285,7 +2346,63 @@ export default function ProjectDetails() {
             {projectView === 'backlog' && (
               <div className="bg-white border rounded-md shadow-sm">
                 <div className="px-4 py-2 border-b bg-gray-50">
-                  <h3 className="text-sm font-semibold text-gray-900">Backlog View</h3>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-sm font-semibold text-gray-900">Backlog View</h3>
+                      
+                      {/* Active filters indicator */}
+                      {(filterStatus.length > 0 || (filterAssignee.length > 0 && currentUser && filterAssignee.includes(currentUser.id))) && (
+                        <div className="flex items-center gap-1">
+                          <div className="h-2 w-2 bg-blue-500 rounded-full"></div>
+                          <span className="text-xs text-blue-600">Filters Active</span>
+                        </div>
+                      )}
+                    </div>
+                    
+                    {/* Filters */}
+                    <div className="flex items-center gap-2">
+                      {/* Status Filter */}
+                      <div className="flex items-center gap-1">
+                        <span className="text-xs text-gray-600">Status:</span>
+                        <select
+                          value={filterStatus.length === 1 ? filterStatus[0] : ''}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            setFilterStatus(value ? [value] : []);
+                          }}
+                          className="text-xs border border-gray-300 rounded px-2 py-1 bg-white min-w-20"
+                        >
+                          <option value="">All</option>
+                          <option value="TODO">To Do</option>
+                          <option value="IN_PROGRESS">In Progress</option>
+                          <option value="ON_HOLD">On Hold</option>
+                          <option value="DONE">Done</option>
+                        </select>
+                      </div>
+
+                      {/* Assignee Filter (Current User vs All) */}
+                      <div className="flex items-center gap-1">
+                        <span className="text-xs text-gray-600">Show:</span>
+                        <select
+                          value={filterAssignee.length > 0 && currentUser && filterAssignee.includes(currentUser.id) ? 'mine' : 'all'}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            if (value === 'mine' && currentUser) {
+                              setFilterAssignee([currentUser.id]);
+                            } else {
+                              setFilterAssignee([]);
+                            }
+                          }}
+                          className="text-xs border border-gray-300 rounded px-2 py-1 bg-white min-w-20"
+                        >
+                          {(currentUser?.role === 'ADMIN' || currentUser?.role === 'SCRUM_MASTER') && (
+                            <option value="all">All Items</option>
+                          )}
+                          <option value="mine">My Items</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full table-fixed">
