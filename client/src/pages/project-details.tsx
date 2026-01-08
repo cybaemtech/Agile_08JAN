@@ -85,8 +85,8 @@ export default function ProjectDetails() {
   const [filterType, setFilterType] = useState<string[]>([]);
   const [filterStatus, setFilterStatus] = useState<string[]>([]);
   const [filterPriority, setFilterPriority] = useState<string[]>([]);
-  const [filterAssignee, setFilterAssignee] = useState<number[]>([]);
   const [filterFeature, setFilterFeature] = useState<number | undefined>(undefined);
+  const [searchTerm, setSearchTerm] = useState<string>('');
 
   // State for expanded items in the hierarchical view
   const [expandedItems, setExpandedItems] = useState<Record<number, boolean>>({});
@@ -188,33 +188,17 @@ export default function ProjectDetails() {
     }
   }, [project]);
 
-  // Auto-filter board view based on user role and reset filters when switching views
+  // Auto-filter all views to show only current user's assigned items
   useEffect(() => {
-    if (projectView === 'board' && currentUser?.id) {
-      // Admin and Scrum Master can see all tasks, others see only their assigned tasks
-      if (currentUser.role === 'ADMIN' || currentUser.role === 'SCRUM_MASTER') {
-        setFilterAssignee([]); // Show all tasks for admin/scrum master
-      } else {
-        setFilterAssignee([currentUser.id]); // Filter to current user for regular users
-      }
-    } else if (projectView === 'backlog' && currentUser?.id) {
-      // Auto-filter backlog view based on user role
-      if (currentUser.role === 'ADMIN' || currentUser.role === 'SCRUM_MASTER') {
-        // Admin and Scrum Master can see all items by default
-        if (filterAssignee.length === 0 && filterStatus.length === 0) {
-          // Keep existing filters or show all
-        }
-      } else {
-        // Regular users see only their assigned items by default
-        setFilterAssignee([currentUser.id]);
-      }
+    if ((projectView === 'board' || projectView === 'backlog') && currentUser?.id) {
+      // All users see only their assigned items by default (handled in filtering logic)
     } else if (projectView !== 'board' && projectView !== 'backlog') {
       // Clear all filters when leaving board/backlog views to prevent stale state
-      setFilterAssignee([]);
       setFilterType([]);
       setFilterStatus([]);
       setFilterPriority([]);
       setFilterFeature(undefined);
+      setSearchTerm('');
     }
   }, [projectView, currentUser?.id, currentUser?.role]);
 
@@ -1126,21 +1110,15 @@ export default function ProjectDetails() {
       return false;
     }
 
-    // Assignee filter
-    if (filterAssignee.length > 0) {
-      // Handle special case for unassigned items (represented by -1)
-      if (filterAssignee.includes(-1)) {
-        // Show unassigned items (null or undefined assigneeId)
-        if (!item.assigneeId) {
-          return true;
-        }
-        // If filtering includes both -1 and specific user IDs, check for those too
-        return filterAssignee.some(id => id !== -1 && item.assigneeId === id);
-      } else {
-        // Normal assignee filtering - only show items assigned to specific users
-        if (!item.assigneeId || !filterAssignee.includes(item.assigneeId)) {
-          return false;
-        }
+    // Search filter (title and hierarchy)
+    if (searchTerm && searchTerm.trim() !== '') {
+      const searchLower = searchTerm.toLowerCase().trim();
+      const titleMatch = item.title.toLowerCase().includes(searchLower);
+      const descriptionMatch = item.description?.toLowerCase().includes(searchLower);
+      const externalIdMatch = item.externalId?.toLowerCase().includes(searchLower);
+      
+      if (!titleMatch && !descriptionMatch && !externalIdMatch) {
+        return false;
       }
     }
 
@@ -1376,21 +1354,6 @@ export default function ProjectDetails() {
   // Handler for priority filter
   const handleFilterPriorityChange = (value: string) => {
     handleStringFilter(value, filterPriority, setFilterPriority);
-  };
-
-  // Handler for assignee filter
-  const handleFilterAssigneeChange = (value: string) => {
-    if (value === "all") {
-      // Clear the filter to show all assignees
-      setFilterAssignee([]);
-    } else if (value === "unassigned") {
-      // Filter for unassigned items (-1 represents unassigned)
-      setFilterAssignee([-1]);
-    } else {
-      // Filter by specific user ID
-      const userId = parseInt(value);
-      setFilterAssignee([userId]);
-    }
   };
 
   return (
@@ -1786,20 +1749,6 @@ export default function ProjectDetails() {
                         return false;
                       }
 
-                      // Filter by assignee if any assignee filters are selected
-                      if (filterAssignee.length > 0) {
-                        // Handle unassigned case
-                        if (filterAssignee.includes(-1) && !item.assigneeId) {
-                          return true;
-                        }
-                        // Handle assigned case
-                        if (item.assigneeId && filterAssignee.includes(item.assigneeId)) {
-                          return true;
-                        }
-                        // If filter is active but item doesn't match, exclude it
-                        return false;
-                      }
-
                       return true;
                     })
                     : []
@@ -1900,6 +1849,18 @@ export default function ProjectDetails() {
                   </div>
 
                   <div className="flex flex-wrap gap-2">
+                    {/* Search Input */}
+                    <div className="flex items-center">
+                      <span className="text-xs font-medium mr-2">Search:</span>
+                      <input
+                        type="text"
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        placeholder="Search titles..."
+                        className="h-8 px-2 text-xs border border-neutral-300 rounded w-36 focus:outline-none focus:ring-1 focus:ring-primary"
+                      />
+                    </div>
+
                     {/* Type Filter */}
                     <div className="flex items-center">
                       <span className="text-xs font-medium mr-2">Type:</span>
@@ -2004,52 +1965,6 @@ export default function ProjectDetails() {
                         </div>
                       )}
                     </div>
-
-                    {/* Assignee Filter */}
-                    <div className="flex items-center">
-                      <span className="text-xs font-medium mr-2">Assignee:</span>
-                      <Select
-                        value={
-                          filterAssignee.length === 0 
-                            ? "all" 
-                            : filterAssignee.includes(-1) 
-                              ? "unassigned"
-                              : String(filterAssignee[0])
-                        }
-                        onValueChange={handleFilterAssigneeChange}
-                      >
-                        <SelectTrigger className="h-8 px-2 text-xs w-28">
-                          <SelectValue placeholder="All assignees" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">All assignees</SelectItem>
-                          <SelectItem value="unassigned">Unassigned</SelectItem>
-                          {Array.isArray(projectTeamMembers) && projectTeamMembers.map(user => (
-                            <SelectItem key={user.id} value={String(user.id)}>
-                              {user.fullName || user.username}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      {filterAssignee.length > 0 && (
-                        <div className="flex flex-wrap gap-1 ml-1">
-                          {filterAssignee.map(userId => {
-                            const user = Array.isArray(projectTeamMembers) ? projectTeamMembers.find(u => u.id === userId) : null;
-                            return (
-                              <Badge
-                                key={userId}
-                                variant="outline"
-                                className="text-xs py-0 h-6"
-                                onClick={() => handleFilterAssigneeChange("all")}
-                              >
-                                {userId === -1 ? "Unassigned" : (user ? (user.fullName || user.username) : "Unknown User")}
-                                <X className="h-3 w-3 ml-1" />
-                              </Badge>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
                   </div>
                 </div>
                 <div className="overflow-x-auto overflow-y-auto max-h-[600px]">
@@ -2064,8 +1979,7 @@ export default function ProjectDetails() {
                         <th className="font-medium px-2 py-1 border-r border-neutral-200">Severity</th>
                         <th className="font-medium px-2 py-1 border-r border-neutral-200">Assignee</th>
                         <th className="font-medium px-2 py-1 border-r border-neutral-200">EST HR</th>
-                        <th className="font-medium px-2 py-1 border-r border-neutral-200">Last Updated</th>
-                        <th className="font-medium px-2 py-1">Actions</th>
+                        <th className="font-medium px-2 py-1">Last Updated</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -2080,6 +1994,11 @@ export default function ProjectDetails() {
 
                         return Array.isArray(workItems) && workItems
                           .filter(item => {
+                            // Only show items assigned to current user (automatic assignee filtering)
+                            if (!currentUser || item.assigneeId !== currentUser.id) {
+                              return false;
+                            }
+
                             // Filter by type if any type filters are selected
                             if (filterType.length > 0 && !filterType.includes(item.type)) {
                               return false;
@@ -2095,18 +2014,10 @@ export default function ProjectDetails() {
                               return false;
                             }
 
-                            // Filter by assignee if any assignee filters are selected
-                            if (filterAssignee.length > 0) {
-                              // Handle unassigned case
-                              if (filterAssignee.includes(-1) && !item.assigneeId) {
-                                return true;
-                              }
-                              // Handle assigned case
-                              if (item.assigneeId && filterAssignee.includes(item.assigneeId)) {
-                                return true;
-                              }
-                              // If filter is active but item doesn't match, exclude it
-                              return false;
+                            // Filter by search term if provided
+                            if (searchTerm.trim()) {
+                              const searchLower = searchTerm.toLowerCase().trim();
+                              return item.title.toLowerCase().includes(searchLower);
                             }
 
                             return true;
@@ -2312,7 +2223,7 @@ export default function ProjectDetails() {
                                   })()}
                                 </span>
                               </td>
-                              <td className="px-2 py-0.5 border-r border-neutral-200">
+                              <td className="px-2 py-0.5">
                                 {(item.updatedBy || item.updatedByName) && item.updatedAt ? (
                                   <div className="flex items-center space-x-1">
                                     <div className="h-3 w-3 rounded-full bg-green-200 flex items-center justify-center text-[10px] flex-shrink-0">
@@ -2356,29 +2267,6 @@ export default function ProjectDetails() {
                                   <span className="text-neutral-400 text-xs">-</span>
                                 )}
                               </td>
-                              <td className="px-2 py-0.5">
-                                <div className="flex space-x-1">
-                                  {/* Check if user can edit this item */}
-                                  {canUserEditWorkItem(item, currentUser, workItems || []) ? (
-                                    <>
-                                      {/* Delete button - Only ADMIN and SCRUM_MASTER */}
-                                      {(currentUser?.role === 'ADMIN' || currentUser?.role === 'SCRUM_MASTER') && (
-                                        <Button
-                                          size="sm"
-                                          variant="ghost"
-                                          className="h-5 w-5 p-0 text-red-500"
-                                          onClick={() => openModal("deleteItem", { workItem: item })}
-                                          title="Delete item (Admin/Scrum Master only)"
-                                        >
-                                          <Trash2 className="h-3 w-3" />
-                                        </Button>
-                                      )}
-                                    </>
-                                  ) : (
-                                    <span className="text-xs text-neutral-400">No access</span>
-                                  )}
-                                </div>
-                              </td>
                             </tr>
                           ));
                       })()}
@@ -2404,7 +2292,7 @@ export default function ProjectDetails() {
                       <h3 className="text-sm font-semibold text-gray-900">Backlog View</h3>
                       
                       {/* Active filters indicator */}
-                      {(filterType.length > 0 || filterStatus.length > 0 || filterAssignee.length > 0) && (
+                      {(filterType.length > 0 || filterStatus.length > 0 || (searchTerm && searchTerm.trim() !== '')) && (
                         <div className="flex items-center gap-1">
                           <div className="h-2 w-2 bg-blue-500 rounded-full"></div>
                           <span className="text-xs text-blue-600">Filters Active</span>
@@ -2433,31 +2321,25 @@ export default function ProjectDetails() {
                         </select>
                       </div>
 
-                      {/* Assignee Filter */}
+                      {/* Search Filter */}
                       <div className="flex items-center gap-1">
-                        <span className="text-xs text-gray-600">Assignee:</span>
-                        <select
-                          value={
-                            filterAssignee.length === 0 
-                              ? "all" 
-                              : filterAssignee.includes(-1) 
-                                ? "unassigned"
-                                : String(filterAssignee[0])
-                          }
-                          onChange={(e) => {
-                            const value = e.target.value;
-                            handleFilterAssigneeChange(value);
-                          }}
-                          className="text-xs border border-gray-300 rounded px-2 py-1 bg-white min-w-20"
-                        >
-                          <option value="all">All</option>
-                          <option value="unassigned">Unassigned</option>
-                          {Array.isArray(projectTeamMembers) && projectTeamMembers.map(user => (
-                            <option key={user.id} value={String(user.id)}>
-                              {user.fullName || user.username}
-                            </option>
-                          ))}
-                        </select>
+                        <span className="text-xs text-gray-600">Search:</span>
+                        <input
+                          type="text"
+                          value={searchTerm}
+                          onChange={(e) => setSearchTerm(e.target.value)}
+                          placeholder="Filter by title..."
+                          className="text-xs border border-gray-300 rounded px-2 py-1 bg-white min-w-32"
+                        />
+                        {searchTerm && (
+                          <button
+                            onClick={() => setSearchTerm('')}
+                            className="text-gray-400 hover:text-gray-600 ml-1"
+                            title="Clear search"
+                          >
+                            ×
+                          </button>
+                        )}
                       </div>
 
                       {/* Type Filter */}
