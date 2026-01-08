@@ -1100,6 +1100,11 @@ export default function ProjectDetails() {
 
   // Helper function to check if an item matches the current filters
   const itemMatchesFilters = (item: WorkItem): boolean => {
+    // Assignee filter - only show items assigned to current user
+    if (!currentUser || item.assigneeId !== currentUser.id) {
+      return false;
+    }
+
     // Type filter
     if (filterType.length > 0 && !filterType.includes(item.type)) {
       return false;
@@ -1724,6 +1729,11 @@ export default function ProjectDetails() {
                   currentUser={currentUser}
                   workItems={Array.isArray(workItems)
                     ? workItems.filter(item => {
+                      // Only show items assigned to current user
+                      if (!currentUser || item.assigneeId !== currentUser.id) {
+                        return false;
+                      }
+
                       // Only show specific types in kanban (exclude EPICs)
                       if (item.type === 'EPIC') {
                         return false;
@@ -1830,7 +1840,12 @@ export default function ProjectDetails() {
               <div className="bg-white border rounded-md shadow-sm">
                 <div className="p-4 border-b">
                   <div className="flex justify-between items-center mb-3">
-                    <h3 className="text-lg font-medium">All Work Items</h3>
+                    <div>
+                      <h3 className="text-lg font-medium">All Work Items</h3>
+                      <p className="text-xs text-blue-600 mt-1">
+                        Viewing all items. You can only edit items assigned to you.
+                      </p>
+                    </div>
                     <div className="flex items-center space-x-4 text-xs text-neutral-600">
                       <div className="flex items-center">
                         <div className="w-2 h-2 bg-gray-500 rounded-full mr-1"></div>
@@ -1843,7 +1858,7 @@ export default function ProjectDetails() {
                       <span className="text-xs text-neutral-500">
                         {currentUser?.role === 'ADMIN' || currentUser?.role === 'SCRUM_MASTER'
                           ? 'Admin/Scrum Master: Can edit all items'
-                          : 'Can only edit items you created'}
+                          : 'Can only edit items assigned to you'}
                       </span>
                     </div>
                   </div>
@@ -1994,11 +2009,6 @@ export default function ProjectDetails() {
 
                         return Array.isArray(workItems) && workItems
                           .filter(item => {
-                            // Only show items assigned to current user (automatic assignee filtering)
-                            if (!currentUser || item.assigneeId !== currentUser.id) {
-                              return false;
-                            }
-
                             // Filter by type if any type filters are selected
                             if (filterType.length > 0 && !filterType.includes(item.type)) {
                               return false;
@@ -2289,7 +2299,12 @@ export default function ProjectDetails() {
                 <div className="px-4 py-2 border-b bg-gray-50">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <h3 className="text-sm font-semibold text-gray-900">Backlog View</h3>
+                      <div>
+                        <h3 className="text-sm font-semibold text-gray-900">Backlog View</h3>
+                        <p className="text-xs text-blue-600 mt-0.5">
+                          Showing only your assigned items.
+                        </p>
+                      </div>
                       
                       {/* Active filters indicator */}
                       {(filterType.length > 0 || filterStatus.length > 0 || (searchTerm && searchTerm.trim() !== '')) && (
