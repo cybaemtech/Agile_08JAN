@@ -865,6 +865,21 @@ export default function Timeline() {
     enabled: true,
   });
 
+  // Filter work items to show only those assigned to current user
+  const filteredWorkItems = useMemo(() => {
+    if (!currentUser) return [];
+    return allWorkItems.filter(item => item.assigneeId === currentUser.id);
+  }, [allWorkItems, currentUser]);
+
+  // Filter projects to show only those where user has assigned items
+  const filteredProjects = useMemo(() => {
+    if (!currentUser) return [];
+    const projectsWithUserItems = new Set(
+      filteredWorkItems.map(item => item.projectId)
+    );
+    return projects.filter(project => projectsWithUserItems.has(project.id));
+  }, [projects, filteredWorkItems, currentUser]);
+
   const handleViewModeChange = (mode: GanttViewMode) => {
     setGanttViewMode(mode);
   };
@@ -874,14 +889,19 @@ export default function Timeline() {
       <Sidebar
         user={currentUser}
         teams={teams}
-        projects={projects}
+        projects={filteredProjects}
       />
       
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Tab Navigation */}
         <div className="bg-white border-b border-gray-200 px-6 py-4">
           <div className="flex items-center space-x-8">
-            <h1 className="text-2xl font-bold text-gray-900">Project Timeline</h1>
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900">Project Timeline</h1>
+              <p className="text-sm text-blue-600 mt-1">
+                Showing only projects where you have assigned items.
+              </p>
+            </div>
             <nav className="flex space-x-8">
               <button
                 onClick={() => setActiveTab('gantt')}
@@ -912,9 +932,9 @@ export default function Timeline() {
         <main className="flex-1 overflow-auto p-6">
           {activeTab === 'gantt' && (
             <ProjectGanttChart 
-              projects={projects}
+              projects={filteredProjects}
               teams={teams}
-              workItems={allWorkItems}
+              workItems={filteredWorkItems}
               users={users}
               viewMode={ganttViewMode}
               currentYear={currentYear}
@@ -926,8 +946,8 @@ export default function Timeline() {
           
           {activeTab === 'calendar' && (
             <CalendarView 
-              projects={projects}
-              workItems={allWorkItems}
+              projects={filteredProjects}
+              workItems={filteredWorkItems}
               users={users}
             />
           )}
